@@ -116,20 +116,42 @@ def build_ple(sparse_cols,dense_cols,sparse_max_len,embed_dim,expert_dim = 4,
     return model
 
 if __name__ == '__main__':    
-    sparse_cols = ['userid', 'feedid', 'authorid', 'bgm_song_id', 'bgm_singer_id']
-    varlen_cols = ['manual_tag_list','manual_keyword_list']
-    dense_cols = ['videoplayseconds']
+    target = ["read_comment", "like", "click_avatar", "forward"]
+    sparse_features = ['userid', 'feedid', 'authorid', 'bgm_song_id', 'bgm_singer_id']
+    varlen_features = ['manual_tag_list','manual_keyword_list']
+    dense_features = ['videoplayseconds']
+    #1.加载数据
+    with open('../user_data/data.pkl','rb') as f:
+        train,val,test,encoder = pkl.load(f)
+    train_num = len(train)
     
-    sparse_max_len = {f:1000 for f in sparse_cols}
-    varlens_max_len = {f:1000 for f in varlen_cols}
-    targets = ['task1','task2','task3','task4']
-    from util import binary_focal_loss
+    #2.生成输入特征设置
+    sparse_max_len = {f:len(encoder[f]) + 1 for f in sparse_features}
+    varlens_max_len = {f:len(encoder[f]) + 1 for f in varlen_features}
+    feature_names = sparse_features+varlen_features+dense_features
     
-    model = build_ple(sparse_cols,dense_cols,sparse_max_len,embed_dim = 16,expert_dim = 32,
-              varlens_cols = [],varlens_max_len = [],dnn_hidden_units = (128,128),
-              n_task = 4,n_experts = [2,2,2,2],n_expert_share = 4,dnn_reg_l2 = 1e-6,
-              drop_rate = 0.0,embedding_reg_l2 = 1e-6,targets = targets)
-    focal_loss = binary_focal_loss(gamma=2, alpha=0.25)
-    losses = {x:focal_loss for x in targets}
-    model.compile(loss = losses,optimizer = 'Adam')
-    model.summary()
+    # 3.generate input data for model
+    train_model_input = {name: train[name] if name not in varlen_features else np.stack(train[name]) for name in feature_names } #训练模型的输入，字典类型。名称和具体值
+    val_model_input = {name: val[name] if name not in varlen_features else np.stack(val[name]) for name in feature_names }
+    test_model_input = {name: test[name] if name not in varlen_features else np.stack(test[name]) for name in feature_names}
+    
+    train_labels = [train[y].values for y in target]
+    val_labels = [val[y].values for y in target]
+    
+    del train,val #多余的特征删除，释放内存。
+    gc.collect()
+    
+    # 4.Define Model,train,predict and evaluate
+    model = build_ple(sparse_features,dense_features,sparse_max_len,embed_dim = 16,expert_dim = 32,
+              varlens_cols = varlen_features,varlens_max_len = varlens_max_len,dnn_hidden_units = (64,),
+              n_task = 4,n_experts = [4,4,4,4],n_expert_share = 8,dnn_reg_l2 = 1e-6,
+              drop_rate = 0.1,embedding_reg_l2 = 1e-6,targets = target)
+
+    adam = optimizers.Adam(learning_rate=0.01, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+    model.compile(adam, loss = 'binary_crossentropy' ,metrics = [tf.keras.metrics.AUC()],)
+    
+    history = model.fit(train_model_input, train_labels,validation_data = (val_model_input,val_labels),
+                        batch_size=10240, epochs=4, verbose=1)
+        
+    
+    

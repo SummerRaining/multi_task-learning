@@ -130,7 +130,7 @@ if __name__ == '__main__':
     # 4.Define Model,train,predict and evaluate
     model = build_mmoe(sparse_features,dense_features,sparse_max_len,embed_dim = 16,expert_dim = 32,
               n_task = 4,n_expert = 4,varlens_cols = varlen_features,varlens_max_len = varlens_max_len,
-              target = target,dnn_reg_l2 = 1e-5,drop_rate = 0.1)
+              dnn_hidden_units = (64,64),target = target,dnn_reg_l2 = 1e-5,drop_rate = 0.1)
 
     adam = optimizers.Adam(learning_rate=0.01, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
     model.compile(adam, loss = 'binary_crossentropy' ,metrics = [tf.keras.metrics.AUC()],)
