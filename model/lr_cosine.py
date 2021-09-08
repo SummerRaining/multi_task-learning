@@ -1,4 +1,3 @@
-# https://blog.csdn.net/qq_38290475/article/details/103548680
 from keras import *
 import keras
 from keras import layers
